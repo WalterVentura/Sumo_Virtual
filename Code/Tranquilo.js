@@ -4,10 +4,11 @@ var spin_counter;
 var turning_direction;
 var motor_left, motor_right;
 
-var blind_flag;
+const error_vector_size = 15;
+var blind_flag = error_vector_size;
 var error;
 var error_index = 0;
-const error_vector_size = 15;
+
 var error_vector = [];
 for (var i=0;i< error_vector_size;i++) {
     error_vector.push(0);
@@ -17,7 +18,8 @@ var derivative = 0;
 
 const line_omega = 10.0;
 const spin_omega = 40.0;
-const search_omega = 0.0;
+const search_omega = 40.0;
+const lost_omega = 40.0;
 
 function control(front_left, front_right, back_left, back_right, distance_left, distance_right) 
 {
@@ -25,8 +27,8 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
     const left = -1;
     const right = 1;
     
-    const KP = 0;
-    const KD = 0;
+    const KP = 80.0;
+    const KD = 500.0;
     
     var constrain;
     
@@ -34,10 +36,19 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
     {
  
         case 'dibre':
+            
             counter++;
-            if(counter > 30)
+            get_PID_error(distance_left, distance_right);
+            if(blind_flag == 0)
             {
                 state ='searching';
+            }
+            else
+            {
+               if(counter == 26)
+                {
+                    state = 'lost';
+                }
             }
             
         break;
@@ -72,9 +83,59 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
                     state = 'advancing_on_the_line';
                     counter = 0;
                 }
+                else
+                {
+                    get_PID_error(distance_left, distance_right);
+                    if(blind_flag == error_vector_size)
+                    {
+                        state = 'lost';
+                    }  
+                }
             }
            
-            get_PID_error(distance_left, distance_right);
+            
+            
+        break;
+            
+        case 'lost':
+            
+            if(front_left > line_thres)
+            {
+                if(front_right > line_thres)
+                {
+                    turning_direction = Math.random() % 2;
+                    if(turning_direction != right)
+                    {
+                        turning_direction = left;
+                    }
+                    state = 'turning';
+                    spin_counter = 14;
+                }
+                else
+                {
+                    turning_direction = right;
+                    state = 'advancing_on_the_line';
+                    counter = 0;
+                }
+            }
+            else
+            {
+                if(front_right > line_thres)
+                {
+                    turning_direction = left;
+                    state = 'advancing_on_the_line';
+                    counter = 0;
+                }
+                else
+                {
+                    get_PID_error(distance_left, distance_right);
+                    if(blind_flag == 0)
+                    {
+                        state = 'searching';
+                    }  
+                }
+            }
+            
         break;
                         
         case 'advancing_on_the_line':
@@ -147,14 +208,21 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
             }
             else
             {
-                motor_left = 0;
-                motor_right = 0;
+                if(counter < 26)
+                {
+                    motor_left = 40;
+                    motor_right = -40; 
+                }
+                else
+                {
+                    motor_left = 0;
+                    motor_right = 0;
+                }
             }
             
             
         break;
-            
-            
+                   
         case 'searching':            
             motor_left = search_omega + KP*error + KD*derivative;
             motor_right =search_omega - KP*error - KD*derivative;
@@ -162,8 +230,12 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
             bound_check(motor_left, motor_right);
                   
         break;
+            
+        case 'lost':
+            motor_left = lost_omega;
+            motor_right = lost_omega;
+        break;
                                
-         
         case 'advancing_on_the_line':
             motor_left = line_omega;
             motor_right = line_omega;
@@ -182,8 +254,8 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
     }
 
     return {
-        leftSpeed: 0,
-        rightSpeed: 0,
+        leftSpeed: motor_left,
+        rightSpeed: motor_right,
     };
 }
 
@@ -195,9 +267,6 @@ function get_PID_error(distance_left, distance_right)
     
     var ds_L;
     var ds_R;
-    
-    var error_1;
-    var error_2;
     
     var x_R;
     var x_L;
@@ -217,83 +286,93 @@ function get_PID_error(distance_left, distance_right)
     
     if(distance_left > 134)
     {
-        if(distance_right > 134)
+        if(distance_right > 134) // Not seeing
         {
-            error = 0;
-            blind_flag = 1;
+            if(blind_flag < error_vector_size)
+            {
+                if(blind_flag == 0)
+                {
+                    error = error_vector[(error_index - 1 + error_vector_size)% error_vector_size] + derivative;
+                }
+                blind_flag += 1;
+                derivative = (error - error_vector[error_index])/error_vector_size;
+                error_vector[error_index] = error;
+                error_index = (error_index + 1) % error_vector_size;
+            }
         }
-        else
+        else // Seeing only with right sensor
         {
             ds_L = 1340;
             ds_R = 10*distance_right;
-            error = -Math.atan((l*(1+Math.sqrt(2)))/(4*(l - r_wheel + ds_R)));
+            
+            if(blind_flag == error_vector_size)
+            {
+                for(var i = 0; i < error_vector_size; i++)
+                {
+                    error_vector[i] = -0.10*Math.PI;
+                }
+            }
             blind_flag = 0;
+            
+            error = -Math.atan((l*(1+Math.sqrt(2)))/(4*(l - r_wheel + ds_R)));
+            derivative = (error - error_vector[error_index])/error_vector_size;
+            error_vector[error_index] = error;
+            error_index = (error_index + 1) % error_vector_size;
+  
         }
     }
     else
     {
         ds_L = 10*distance_left;
-        if(distance_right > 134)
+        if(distance_right > 134) // Seeing only with left sensor
         {
             ds_R = 1340;
-            error = Math.atan((l*(1+Math.sqrt(2)))/(4*(l - r_wheel + ds_L)));  
-            blind_flag = 0;
+            
+            if(blind_flag == error_vector_size)
+            {
+                for(var i = 0; i < error_vector_size; i++)
+                {
+                    error_vector[i] = 0.10*Math.PI;
+                }
+            }
+            blind_flag = 0;    
+            
+          
+            error = Math.atan((l*(1+Math.sqrt(2)))/(4*(l - r_wheel + ds_L)));   
+            derivative = (error - error_vector[error_index])/error_vector_size;
+            error_vector[error_index] = error;
+            error_index = (error_index + 1) % error_vector_size;
+
         }
-        else
+        else // Seeing with both sensors
         {
             ds_R = 10*distance_right;
             
-            error_1 = l*(ds_L - ds_R);
-            error_1 /= (ds_L +ds_R +2*l - 2*r_wheel)*Math.sqrt(d*d + (ds_L - ds_R)*(ds_L - ds_R));
-            error_1 = -Math.atan(error_1);
-            
-           //Inverttion
-           if(ds_L < ds_R)
+            if(blind_flag == error_vector_size)
             {
-                ds_L += ds_R;
-                ds_R = ds_L - ds_R;
-                ds_L -= ds_R;
-                invert_flag = 1;
+                for(var i = 0; i < error_vector_size; i++)
+                {
+                    if(ds_L < ds_R)
+                    {
+                        error_vector[i] = 0.10*Math.PI;
+                    }
+                    else
+                    {
+                        error_vector[i] = -0.10*Math.PI; 
+                    }
+                }
             }
-            else
-            {
-                invert_flag = 0;
-            }
+            blind_flag = 0;    
             
-            x_R = d/2.0;
-            x_L = -x_R;
-            y_R = ds_R + l - r_wheel;
-            y_L = ds_L + l - r_wheel;
-            y_v = 0.5*(y_R + y_L - Math.sqrt((y_R + y_L)*(y_R + y_L) - 4*(x_L*x_R + y_L*y_R)));
-            
-            error_2 = Math.sqrt((y_R - y_v)*(y_R - y_v) + (x_R)*(x_R));
-            sin_A = (y_R - y_v)/error_2;
-            cos_A = x_R/error_2;
-            tan_A = sin_A/cos_A;
-            
-            x = x_L*cos_A*cos_A - x_R*sin_A*sin_A + (y_L -y_R)*sin_A*cos_A + 0.5*l*(cos_A - sin_A);
-            y = tan_A*(x - x_R) + y_R + 0.5*(l/cos_A);
-            
-            error_2 = -Math.atan(x/y);
-            
-            //Invertion
-            if(invert_flag == 1)
-            {
-                error_2 *= -1;
-            }
-            
-            error = 0.5*(error_1 + error_2);
-            blind_flag = 0;
-            
-             
-         
+            error = l*(ds_L - ds_R);
+            error /= (ds_L +ds_R +2*l - 2*r_wheel)*Math.sqrt(d*d + (ds_L - ds_R)*(ds_L - ds_R));
+            error = -Math.atan(error);
+                    
+            derivative = (error - error_vector[error_index])/error_vector_size;
+            error_vector[error_index] = error;
+            error_index = (error_index + 1) % error_vector_size;    
         }
     }
-    
-    derivative = (error - error_vector[error_index])/error_vector_size;
-    error_vector[error_index] = error;
-    error_index = (error_index + 1) % error_vector_size;
- 
 }
 
 function get_spin_counter()
