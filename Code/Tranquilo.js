@@ -4,6 +4,11 @@ var spin_counter;
 var turning_direction;
 var motor_left, motor_right;
 
+const KP = 80.0;
+const KD = 500.0;
+//const KP = 80.0;
+//const KD = 500.0;
+
 const error_vector_size = 15;
 var blind_flag = error_vector_size;
 var error;
@@ -27,10 +32,12 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
     const left = -1;
     const right = 1;
     
-    const KP = 80.0;
-    const KD = 500.0;
-    
     var constrain;
+    
+    // Correction
+    distance_left += distance_right;
+    distance_right = distance_left - distance_right;
+    distance_left -= distance_right;
     
     switch(state)
     {
@@ -93,8 +100,6 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
                 }
             }
            
-            
-            
         break;
             
         case 'lost':
@@ -256,6 +261,14 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
     return {
         leftSpeed: motor_left,
         rightSpeed: motor_right,
+        
+        log: [
+            { name: 'Distance Left', value: distance_left, min: -300, max: 300 },
+            { name: 'Distance Right', value: distance_right, min: -300, max: 300 },
+            { name: 'Erro', value: KP*error, min: -40, max: 40 },
+            { name: 'Derivativo', value: KD*derivative, min: -40, max: 40 }
+            
+        ]
     };
 }
 
@@ -263,116 +276,89 @@ function get_PID_error(distance_left, distance_right)
 {
     const l = 200.0;
     const r_wheel = 40;
-    var d = 0.57*l;
     
+    var d = 0.57*l;
     var ds_L;
     var ds_R;
     
-    var x_R;
-    var x_L;
-    var y_R;
-    var y_L;
-    var y_v;
+    const damping_angle = 0.25*Math.PI;
+    var bot_omega;
+    var damping_duration;
     
-    var sin_A;
-    var cos_A;
-    var tan_A;
-    
-    var x;
-    var y;
-    var invert_flag;
-    
-
-    
-    if(distance_left > 134)
+    if(distance_left > 134 && distance_right > 134) // Not seeing
     {
-        if(distance_right > 134) // Not seeing
+        if(blind_flag < error_vector_size)
         {
-            if(blind_flag < error_vector_size)
+            if(blind_flag == 0)
             {
-                if(blind_flag == 0)
-                {
-                    error = error_vector[(error_index - 1 + error_vector_size)% error_vector_size] + derivative;
-                }
-                blind_flag += 1;
-                derivative = (error - error_vector[error_index])/error_vector_size;
-                error_vector[error_index] = error;
-                error_index = (error_index + 1) % error_vector_size;
+                error = error_vector[(error_index - 1 + error_vector_size)% error_vector_size] + (KD/80)*derivative;
             }
-        }
-        else // Seeing only with right sensor
-        {
-            ds_L = 1340;
-            ds_R = 10*distance_right;
-            
-            if(blind_flag == error_vector_size)
-            {
-                for(var i = 0; i < error_vector_size; i++)
-                {
-                    error_vector[i] = -0.10*Math.PI;
-                }
-            }
-            blind_flag = 0;
-            
-            error = -Math.atan((l*(1+Math.sqrt(2)))/(4*(l - r_wheel + ds_R)));
-            derivative = (error - error_vector[error_index])/error_vector_size;
-            error_vector[error_index] = error;
-            error_index = (error_index + 1) % error_vector_size;
-  
+            blind_flag++;                
         }
     }
     else
     {
-        ds_L = 10*distance_left;
-        if(distance_right > 134) // Seeing only with left sensor
+        if(blind_flag == error_vector_size)
         {
-            ds_R = 1340;
-            
-            if(blind_flag == error_vector_size)
+            bot_omega = (motor_left - motor_right)*(r_wheel/l);
+            if(bot_omega == 0)
             {
-                for(var i = 0; i < error_vector_size; i++)
+                damping_duration = error_vector_size;
+            }
+            else
+            {
+                damping_duration = Math.round(60*(damping_angle/bot_omega));
+                if(damping_duration > error_vector_size)
                 {
-                    error_vector[i] = 0.10*Math.PI;
+                    damping_duration = error_vector_size;
                 }
             }
-            blind_flag = 0;    
             
-          
-            error = Math.atan((l*(1+Math.sqrt(2)))/(4*(l - r_wheel + ds_L)));   
-            derivative = (error - error_vector[error_index])/error_vector_size;
-            error_vector[error_index] = error;
-            error_index = (error_index + 1) % error_vector_size;
+         
 
+            for(var i = 0; i < error_vector_size; i++)
+            {
+                if(i < damping_duration)
+                {
+                    //error_vector[(error_index + i)%error_vector_size] = 0;
+                    error_vector[(error_index + i)%error_vector_size] = (bot_omega/60)*(damping_duration - i);
+                }
+                else
+                {
+                    error_vector[(error_index + i)%error_vector_size] = 0;
+                }
+            }       
+        }
+        blind_flag = 0;
+        
+        if(distance_left > 134) // Seeing Only with right sensor
+        {
+            ds_L = 1340;
+            ds_R = 10*distance_right;
+            
+            error = Math.atan((l*(1+Math.sqrt(2)))/(4*(l - r_wheel + ds_R)));
+        }
+        else if(distance_right > 134) // Seeing only with left sensor
+        {
+            ds_L = 10*distance_left;
+            ds_R = 1340;
+            
+            error = -Math.atan((l*(1+Math.sqrt(2)))/(4*(l - r_wheel + ds_L))); 
         }
         else // Seeing with both sensors
         {
+            ds_L = 10*distance_left;
             ds_R = 10*distance_right;
-            
-            if(blind_flag == error_vector_size)
-            {
-                for(var i = 0; i < error_vector_size; i++)
-                {
-                    if(ds_L < ds_R)
-                    {
-                        error_vector[i] = 0.10*Math.PI;
-                    }
-                    else
-                    {
-                        error_vector[i] = -0.10*Math.PI; 
-                    }
-                }
-            }
-            blind_flag = 0;    
             
             error = l*(ds_L - ds_R);
             error /= (ds_L +ds_R +2*l - 2*r_wheel)*Math.sqrt(d*d + (ds_L - ds_R)*(ds_L - ds_R));
-            error = -Math.atan(error);
-                    
-            derivative = (error - error_vector[error_index])/error_vector_size;
-            error_vector[error_index] = error;
-            error_index = (error_index + 1) % error_vector_size;    
+            error = Math.atan(error); 
         }
     }
+    
+    derivative = (error - error_vector[error_index])/error_vector_size;
+    error_vector[error_index] = error;
+    error_index = (error_index + 1) % error_vector_size;    
 }
 
 function get_spin_counter()
