@@ -20,7 +20,6 @@ for (var i=0;i< error_vector_size;i++) {
 }
 var derivative = 0;
 
-
 const line_omega = 10.0;
 const spin_omega = 40.0;
 const search_omega = 40.0;
@@ -262,13 +261,14 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
         leftSpeed: motor_left,
         rightSpeed: motor_right,
         
-        log: [
-            { name: 'Distance Left', value: distance_left, min: -300, max: 300 },
-            { name: 'Distance Right', value: distance_right, min: -300, max: 300 },
-            { name: 'Erro', value: KP*error, min: -40, max: 40 },
-            { name: 'Derivativo', value: KD*derivative, min: -40, max: 40 }
+        //log: [
+              //{ name: 'Distance Left', value: distance_left, min: -300, max: 300 },
+             // { name: 'Distance Right', value: distance_right, min: -300, max: 300 },
+              //{ name: 'Erro', value: KP*error, min: -40, max: 40 },
+              //{ name: 'Derivativo', value: KD*derivative, min: -40, max: 40 }
+            //{ name: 'Tipo de Reversão', value: abelha, min: 0, max: 2 }
             
-        ]
+        //]
     };
 }
 
@@ -320,7 +320,6 @@ function get_PID_error(distance_left, distance_right)
             {
                 if(i < damping_duration)
                 {
-                    //error_vector[(error_index + i)%error_vector_size] = 0;
                     error_vector[(error_index + i)%error_vector_size] = (bot_omega/60)*(damping_duration - i);
                 }
                 else
@@ -374,14 +373,22 @@ function get_spin_counter()
     var z = (x*x) + (y*y);
     
     var cos_B = (-x/2) + y*Math.sqrt((1.0/z) - 0.25);
-    var sin_B = 1 - Math.sqrt(1 - (cos_B*cos_B));
+    if(cos_B > 0.120)
+    {
+        cos_B = 0.120;
+    }
+    else if(cos_B < -0.139)
+    {
+        cos_B = -0.139;
+    }
+    var sin_B = Math.sqrt(1 - (cos_B*cos_B));
     
-    var angle = 0.5*Math.PI + Math.atan((r_in*sin_B - l + r_wheel)/(r_in*sin_B + 0.5*l));
+    var angle = 0.5*Math.PI + Math.atan((r_in*sin_B - l + r_wheel)/(r_in*cos_B + 0.5*l));
     
     v = spin_omega*r_wheel;
     var bot_omega = (2*v)/l;
     var spin_time = angle/bot_omega;
-    spin_counter = Math.round(5.7*60*spin_time);
+    spin_counter = Math.round(1.0*60*spin_time);
 }
 
 function get_spin_counter2()
@@ -391,17 +398,25 @@ function get_spin_counter2()
     const r_in = 720.0;
     const r_wheel = 40.0;
     var v = line_omega*r_wheel;
-    var delta_t = (1.0/60)*counter;
+    var delta_t = (1.10/60)*counter;
     
     var sin_teta = (r_out*r_out - r_in*r_in - (v*delta_t)*(v*delta_t))/(2*r_in*v*delta_t);
-    var cos_teta = 1 - Math.sqrt(1 - (sin_teta*sin_teta));
+    if(sin_teta > 0.918)
+    {
+        sin_teta = 0.918;
+    }
+    else if(sin_teta < 0.138)
+    {
+        sin_teta = 0.138;
+    }
+    var cos_teta = Math.sqrt(1 - (sin_teta*sin_teta));
     
-    var angle = 0.5*Math.PI + Math.atan((r_in*sin_teta - l + r_wheel)/(r_in*sin_teta - 0.5*l));
+    var angle = 0.5*Math.PI + Math.atan((r_in*sin_teta - l + r_wheel)/(r_in*cos_teta - 0.5*l));
     
     v = spin_omega*r_wheel;
     var bot_omega = (2*v)/l;
     var spin_time = angle/bot_omega;
-    spin_counter = Math.round(1.0*60*spin_time);    
+    spin_counter = Math.round(1.0*60*spin_time);  
 }    
 
 function bound_check(motor_left, motor_right)
