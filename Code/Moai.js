@@ -1,13 +1,12 @@
-var state = 'dibre';
+var state = Math.random() < 0.67 ? 'dibre_reh' : 'dibre_giro';
 var counter = 0;
 var spin_counter;
 var turning_direction;
-var motor_left, motor_right;
+var motor_left = 0
+var motor_right = 0;
 
 const KP = 80.0;
 const KD = 500.0;
-//const KP = 80.0;
-//const KD = 500.0;
 
 const error_vector_size = 15;
 var blind_flag = error_vector_size;
@@ -31,8 +30,6 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
     const left = -1;
     const right = 1;
     
-    var constrain;
-    
     // Correction
     distance_left += distance_right;
     distance_right = distance_left - distance_right;
@@ -41,7 +38,25 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
     switch(state)
     {
  
-        case 'dibre':
+        case 'dibre_reh':
+            
+            counter++;
+            get_PID_error(distance_left, distance_right);
+            if(blind_flag == 0)
+            {
+                state ='searching';
+            }
+            else
+            {
+               if(counter == 26)
+                {
+                    state = 'lost';
+                }
+            }
+            
+        break;
+
+        case 'dibre_giro':
             
             counter++;
             get_PID_error(distance_left, distance_right);
@@ -57,8 +72,7 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
                 }
             }
             
-        break;
-            
+        break;            
             
         case 'searching':
            
@@ -204,49 +218,55 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
   
     switch (state) 
     {
-        case 'dibre':
-            if(counter < 15)
+        case 'dibre_reh':
+            
+            if(counter < 22)
             {
-                motor_left = 40;
-                motor_right = -40;
+                motors(-40,-40);
+            }
+            else if(counter < 26)
+            {
+                motors(40,-40);
             }
             else
             {
-                motor_left = 0;
-                motor_right = 0;
+                motors(0,0);
             }
-            
-            
+               
         break;
+   
+        case 'dibre_giro':
+            if(counter < 15)
+            {
+                motors(40,-40);
+            }
+            else
+            {
+                motors(0,0);
+            }
                    
-        case 'searching':            
-            motor_left = search_omega + KP*error + KD*derivative;
-            motor_right =search_omega - KP*error - KD*derivative;
+        break;            
             
-            bound_check(motor_left, motor_right);
-                  
+        case 'searching':            
+            motors(search_omega + KP*error + KD*derivative,
+                   search_omega - KP*error - KD*derivative);        
         break;
             
         case 'lost':
-            motor_left = lost_omega;
-            motor_right = lost_omega;
+            motors(lost_omega,lost_omega);
         break;
                                
         case 'advancing_on_the_line':
-            motor_left = line_omega;
-            motor_right = line_omega;
+            motors(line_omega,line_omega);
         break;        
             
         case 'turning':
-            motor_left = -spin_omega*turning_direction;
-            motor_right = spin_omega*turning_direction;
+            motors(-spin_omega*turning_direction, spin_omega*turning_direction);
         break;
             
-         case 'reversing':
-            motor_left = -line_omega;
-            motor_right = -line_omega;
-        break;      
-            
+        case 'reversing':
+            motors(-line_omega, -line_omega);
+        break;                  
     }
 
     return {
@@ -411,30 +431,55 @@ function get_spin_counter2()
     spin_counter = Math.round(1.0*60*spin_time);  
 }    
 
-function bound_check(motor_left, motor_right)
+function motors(expected_speed_left, expected_speed_right)
 {
-    if(motor_left > 40)
+    const step_size = 80;
+    
+    if(expected_speed_left > 40)
     {
-        motor_left = 40;
+        expected_speed_left = 40;
     }
-    else
+    else if(expected_speed_left < -40)
     {
-        if(motor_left < -40)
-        {
-            motor_left = -40;
-        }
+        expected_speed_left = -40;
     }
     
-    if(motor_right > 40)
+    if(expected_speed_right > 40)
     {
-        motor_right = 40;
+        expected_speed_right = 40;
+    }
+    else if(expected_speed_right < -40)
+    {
+        expected_speed_right = -40;
+    }
+       
+    
+    if(expected_speed_left > motor_left && expected_speed_right > motor_right)
+    {
+        if(expected_speed_left - motor_left < step_size)
+        {
+            motor_left = expected_speed_left;
+        }
+        else
+        {
+            motor_left += step_size;
+        }
+        
+        if(expected_speed_right - motor_right < step_size)
+        {
+            motor_right = expected_speed_right;
+        }
+        else
+        {
+            motor_right += step_size;
+        }
     }
     else
     {
-        if(motor_right < -40)
-        {
-            motor_right = -40;
-        }
+        motor_left = expected_speed_left;
+        motor_right = expected_speed_right;
     }
 }
+
+
 

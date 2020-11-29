@@ -1,5 +1,5 @@
 
-var state = Math.random() > 0.5 ? 'tl' : 'tr';
+    var state = Math.random() > 0.5 ? 'tl' : 'tr';
 var counter = Math.round(15 * Math.random()) + 10;
 
 function control(front_right, front_left, back_right, back_left, dist) {
