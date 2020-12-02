@@ -2,7 +2,7 @@ var state = Math.random() < 0.67 ? 'dibre_reh' : 'dibre_giro';
 var counter = 0;
 var spin_counter;
 var turning_direction;
-var motor_left = 0
+var motor_left = 0;
 var motor_right = 0;
 
 const KP = 80.0;
@@ -26,7 +26,7 @@ const lost_omega = 40.0;
 
 function control(front_left, front_right, back_left, back_right, distance_left, distance_right) 
 {
-    const line_thres = 0.50;
+    const line_thres = 0.35;
     const left = -1;
     const right = 1;
     
@@ -48,7 +48,7 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
             }
             else
             {
-               if(counter == 26)
+               if(counter == 27)
                 {
                     state = 'lost';
                 }
@@ -168,7 +168,7 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
                 }
                 else 
                 {
-                    if(front_right < line_thres)
+                    if(front_right < 1 - line_thres)
                     {
                         state = 'reversing';
                         get_spin_counter2();
@@ -185,7 +185,7 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
                 }
                 else
                 {
-                    if(front_left < line_thres)
+                    if(front_left < 1 - line_thres)
                     {
                         state = 'reversing';
                         get_spin_counter2();
@@ -224,7 +224,7 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
             {
                 motors(-40,-40);
             }
-            else if(counter < 26)
+            else if(counter < 27)
             {
                 motors(40,-40);
             }
@@ -273,14 +273,16 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
         leftSpeed: motor_left,
         rightSpeed: motor_right,
         
-        //log: [
-              //{ name: 'Distance Left', value: distance_left, min: -300, max: 300 },
-             // { name: 'Distance Right', value: distance_right, min: -300, max: 300 },
-              //{ name: 'Erro', value: KP*error, min: -40, max: 40 },
-              //{ name: 'Derivativo', value: KD*derivative, min: -40, max: 40 }
-            //{ name: 'Tipo de Reversão', value: abelha, min: 0, max: 2 }
+        // log: [
+        //       { name: 'Distance Left', value: distance_left, min: -300, max: 300 },
+        //       { name: 'Distance Right', value: distance_right, min: -300, max: 300 },
+        //       { name: 'Erro', value: KP*error, min: -40, max: 40 },
+        //       { name: 'Derivativo', value: KD*derivative, min: -40, max: 40 }
+        //       { name: 'Front Left', value: front_left, min: -1, max: 1 },
+        //       { name: 'Front Right', value: front_right, min: -1, max: 1 },
+
             
-        //]
+        // /]
     };
 }
 
@@ -433,7 +435,11 @@ function get_spin_counter2()
 
 function motors(expected_speed_left, expected_speed_right)
 {
-    const step_size = 80;
+    const step_size = 13.33;
+    
+    var expected_rotation_speed;  //clockwise
+    var expected_translation_speed; //foward
+    var current_translation_speed; // foward
     
     if(expected_speed_left > 40)
     {
@@ -453,32 +459,22 @@ function motors(expected_speed_left, expected_speed_right)
         expected_speed_right = -40;
     }
        
+    current_translation_speed = (motor_left + motor_right)/2;
+    expected_translation_speed = (expected_speed_left + expected_speed_right)/2;
+    expected_rotation_speed = expected_speed_left - expected_translation_speed;
     
-    if(expected_speed_left > motor_left && expected_speed_right > motor_right)
+    if(expected_translation_speed > current_translation_speed + step_size)
     {
-        if(expected_speed_left - motor_left < step_size)
-        {
-            motor_left = expected_speed_left;
-        }
-        else
-        {
-            motor_left += step_size;
-        }
-        
-        if(expected_speed_right - motor_right < step_size)
-        {
-            motor_right = expected_speed_right;
-        }
-        else
-        {
-            motor_right += step_size;
-        }
+         current_translation_speed += step_size;
     }
     else
     {
-        motor_left = expected_speed_left;
-        motor_right = expected_speed_right;
+        current_translation_speed = expected_translation_speed;     
     }
+    
+    motor_left = current_translation_speed + expected_rotation_speed;
+    motor_right = current_translation_speed - expected_rotation_speed;
+    
 }
 
 
