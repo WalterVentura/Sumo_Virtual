@@ -1,7 +1,7 @@
 var state = Math.random() < 0.67 ? 'dibre_reh' : 'dibre_giro';
 var counter = 0;
-var spin_counter;
-var turning_direction;
+var spin_counter = -1;
+var turning_direction = 1;
 var motor_left = 0;
 var motor_right = 0;
 
@@ -24,6 +24,8 @@ const spin_omega = 40.0;
 const search_omega = 40.0;
 const lost_omega = 40.0;
 
+var victory = 0;
+
 function control(front_left, front_right, back_left, back_right, distance_left, distance_right) 
 {
     const line_thres = 0.35;
@@ -34,6 +36,10 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
     distance_left += distance_right;
     distance_right = distance_left - distance_right;
     distance_left -= distance_right;
+    
+    front_left += front_right;
+    front_right = front_left - front_right;
+    front_left -= front_right;
     
     switch(state)
     {
@@ -76,16 +82,20 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
             
         case 'searching':
            
+            get_PID_error(distance_left, distance_right);
             if(front_left > line_thres)
             {
                 if(front_right > line_thres)
                 {
-                    turning_direction = Math.random() % 2;
-                    if(turning_direction != right)
+                    if(blind_flag == 0)
                     {
-                        turning_direction = left;
+                        state = 'advancing_on_the_line';
+                        counter = 0;
                     }
-                    state = 'turning';
+                    else
+                    {
+                        state = 'turning';
+                    }
                     spin_counter = 14;
                 }
                 else
@@ -105,7 +115,6 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
                 }
                 else
                 {
-                    get_PID_error(distance_left, distance_right);
                     if(blind_flag == error_vector_size)
                     {
                         state = 'lost';
@@ -117,16 +126,20 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
             
         case 'lost':
             
+            get_PID_error(distance_left, distance_right);
             if(front_left > line_thres)
             {
                 if(front_right > line_thres)
                 {
-                    turning_direction = Math.random() % 2;
-                    if(turning_direction != right)
+                    if(blind_flag == 0)
                     {
-                        turning_direction = left;
+                        state = 'advancing_on_the_line';
+                        counter = 0;
                     }
-                    state = 'turning';
+                    else
+                    {
+                        state = 'turning';
+                    }
                     spin_counter = 14;
                 }
                 else
@@ -146,7 +159,6 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
                 }
                 else
                 {
-                    get_PID_error(distance_left, distance_right);
                     if(blind_flag == 0)
                     {
                         state = 'searching';
@@ -157,38 +169,64 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
         break;
                         
         case 'advancing_on_the_line':
+            get_PID_error(distance_left, distance_right);
             counter++;
+            
             if(turning_direction == left)
             {
-                if(front_left > line_thres)
+                if(front_right < 1 - line_thres)
                 {
-                    state = 'turning';
-                    get_spin_counter();
-                    
-                }
-                else 
-                {
-                    if(front_right < 1 - line_thres)
+                    if(spin_counter == -1)
                     {
-                        state = 'reversing';
                         get_spin_counter2();
                     }
+                    
+                    if(blind_flag == 0)
+                    {
+                        victory = 1;
+                    }
+                    state = 'reversing';
+
+                }
+                else if(front_left > line_thres)
+                {
+                    if(spin_counter == -1)
+                    {
+                        get_spin_counter();
+                    }
+                    
+                    if(blind_flag > 0)
+                    {
+                        state = 'turning';
+                    }                       
                 }
             }
             else
             {
-                if(front_right > line_thres)
+                if(front_left < 1 - line_thres)
                 {
-                    state = 'turning';
-                    get_spin_counter();
- 
-                }
-                else
-                {
-                    if(front_left < 1 - line_thres)
+                    if(spin_counter == -1)
                     {
-                        state = 'reversing';
                         get_spin_counter2();
+                    }
+                    
+                    if(blind_flag == 0)
+                    {
+                        victory = 1;
+                    }
+                    
+                    state = 'reversing';
+                }
+                else if(front_right > line_thres)
+                {
+                    if(spin_counter == -1)
+                    {
+                        get_spin_counter();
+                    }
+                    
+                    if(blind_flag > 0)
+                    {
+                        state = 'turning';
                     }
                 }
             }
@@ -196,6 +234,7 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
         break;
          
         case 'reversing':
+            get_PID_error(distance_left, distance_right);
             counter--;
             if(counter <= 0)
             {
@@ -206,11 +245,39 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
         case 'turning':
             get_PID_error(distance_left, distance_right);
             spin_counter--;
-            if(spin_counter <= 0  || blind_flag == 0)
+            if(victory == 0)
             {
-                state = 'searching';
-                counter = 0;
+                if(spin_counter <= 0  || blind_flag == 0)
+                {
+                    state = 'searching';
+                    counter = 0;
+                    spin_counter = -1;
+                }
             }
+            else if(spin_counter <= 0)
+            {
+                if(blind_flag == 0)
+                {
+                    state = 'searching';
+                }
+                else
+                {
+                    counter = 0;
+                    state = 'celebration';
+                }           
+            }
+            
+        break;
+            
+        case 'celebration':
+             get_PID_error(distance_left, distance_right);
+             counter++;
+             if(counter >= 20 && blind_flag == 0)
+             {
+                 victory = 0;
+                 state ='searching';
+             }
+                
         break;
               
     }
@@ -261,28 +328,40 @@ function control(front_left, front_right, back_left, back_right, distance_left, 
         break;        
             
         case 'turning':
-            motors(-spin_omega*turning_direction, spin_omega*turning_direction);
+            motors(spin_omega*turning_direction, -spin_omega*turning_direction);
         break;
             
         case 'reversing':
             motors(-line_omega, -line_omega);
-        break;                  
+        break;   
+            
+        case 'celebration':
+            if(counter < 20)
+            {
+                motors(40,40);
+            }
+            else
+            {
+                motors(40,-40); 
+            }
+            
+        break;     
     }
 
     return {
         leftSpeed: motor_left,
         rightSpeed: motor_right,
         
-        // log: [
-        //       { name: 'Distance Left', value: distance_left, min: -300, max: 300 },
-        //       { name: 'Distance Right', value: distance_right, min: -300, max: 300 },
-        //       { name: 'Erro', value: KP*error, min: -40, max: 40 },
-        //       { name: 'Derivativo', value: KD*derivative, min: -40, max: 40 }
-        //       { name: 'Front Left', value: front_left, min: -1, max: 1 },
-        //       { name: 'Front Right', value: front_right, min: -1, max: 1 },
-
-            
-        // /]
+         log: [
+               { name: 'Distance Left', value: distance_left, min: -300, max: 300 },
+              { name: 'Distance Right', value: distance_right, min: -300, max: 300 },
+               { name: 'Erro', value: KP*error, min: -40, max: 40 },
+               { name: 'Derivativo', value: KD*derivative, min: -40, max: 40 }
+               //{ name: 'Front Left', value: front_left, min: -1, max: 1 },
+               //{ name: 'Front Right', value: front_right, min: -1, max: 1 },
+               //{ name: 'Flag', value: abelha, min: -1, max: 1 }
+           
+         ]
     };
 }
 
@@ -328,8 +407,6 @@ function get_PID_error(distance_left, distance_right)
                 }
             }
             
-         
-
             for(var i = 0; i < error_vector_size; i++)
             {
                 if(i < damping_duration)
@@ -402,7 +479,7 @@ function get_spin_counter()
     v = spin_omega*r_wheel;
     var bot_omega = (2*v)/l;
     var spin_time = angle/bot_omega;
-    spin_counter = Math.round(1.0*60*spin_time);
+    spin_counter = Math.round(1.05*60*spin_time);
 }
 
 function get_spin_counter2()
@@ -430,7 +507,7 @@ function get_spin_counter2()
     v = spin_omega*r_wheel;
     var bot_omega = (2*v)/l;
     var spin_time = angle/bot_omega;
-    spin_counter = Math.round(1.0*60*spin_time);  
+    spin_counter = Math.round(1.00*60*spin_time);  
 }    
 
 function motors(expected_speed_left, expected_speed_right)
