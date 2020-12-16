@@ -1,6 +1,6 @@
 var line_state = 'feinting';
 var sight_state;
-var feint = Math.random() < 0.67 ? 'reversion+spin' : 'spin';
+var feint = Math.random() < 0.60 ? 'reversion+spin' : 'spin';
 var counter = 0;
 var reversion_counter;
 var spin_counter = -1;
